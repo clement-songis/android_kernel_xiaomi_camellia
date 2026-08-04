@@ -43,8 +43,9 @@ CONFIG_ZSMALLOC=y
 CONFIG_RANDOMIZE_BASE=y
 CONFIG_CMDLINE="console=tty0 console=ttyMT3,921600n1 root=/dev/ram vmalloc=496M slub_max_order=0 slub_debug=O "
 # CONFIG_EFI is not set
-CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE=y
-CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE_NAMES="mediatek/camellian"
+# CAMELLIA-LOS: camellian.dts includes <camellian/cust.dtsi> which MiCode never
+# published, and we ship the stock base DTB via BOARD_PREBUILT_DTBIMAGE_DIR.
+# CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE is not set
 # CONFIG_CORE_DUMP_DEFAULT_ELF_HEADERS is not set
 CONFIG_COMPAT=y
 CONFIG_PM_DEBUG=y
@@ -501,5 +502,12 @@ CONFIG_TOUCHSCREEN_XIAOMI_TOUCHFEATURE=y
 #BSP.TP - 2021.02.24 - Add for TP bring up
 CONFIG_TOUCHSCREEN_FTS=y
 CONFIG_TOUCHSCREEN_FTS_DIRECTORY="FT8722"
-CONFIG_MILLET=y
+# CAMELLIA-LOS: MIUI app-freeze framework. Its Makefile points at
+# vendor/xiaomi/kernel_modules/mihw/millet/ which MiCode never published.
+# LineageOS has no use for it and nothing else references MIHW.
+# CONFIG_MILLET is not set
 CONFIG_MIHW=y
+
+# CAMELLIA-LOS: /data is formatted with f2fs casefold
+# (external_storage.casefold.enabled=1); the kernel refuses that mount without it.
+CONFIG_UNICODE=y
