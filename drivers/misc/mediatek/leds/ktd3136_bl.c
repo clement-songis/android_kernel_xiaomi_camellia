@@ -717,6 +717,12 @@ int ktd_hbm_set(enum backlight_hbm_mode hbm_mode)
 	u8 value = 0;
 	LOG_DBG("%s enter\n", __func__);
 
+	/* Reachable from the LiveDisplay Outdoor-mode sysfs node regardless of
+	 * whether this IC probed. Without this, a board with no KTD3137 panics.
+	 */
+	if (!bkl_chip || !bkl_chip->client)
+		return -ENODEV;
+
 	ktd_hbm_mode = hbm_mode;
 	ktd3137_read_reg(bkl_chip->client, 0x02, &value);
 	LOG_DBG("default cur is %x", value);

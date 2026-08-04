@@ -517,6 +517,13 @@ static ssize_t mtkfb_set_hbm(struct device *dev, struct device_attribute *attr, 
 	extern char *saved_command_line;
 	int bkl_id = 0;
 	char *bkl_ptr = (char *)strnstr(saved_command_line, ":bklic=", strlen(saved_command_line));
+
+	/* strnstr() returns NULL when the bootloader did not append :bklic=.
+	 * The original code added strlen(":bklic=") to that NULL and handed the
+	 * resulting wild pointer to simple_strtol(). Bail out instead.
+	 */
+	if (!bkl_ptr)
+		return -ENODEV;
 	bkl_ptr += strlen(":bklic=");
 	bkl_id = simple_strtol(bkl_ptr, NULL, 10);
 
@@ -527,12 +534,20 @@ static ssize_t mtkfb_set_hbm(struct device *dev, struct device_attribute *attr, 
 	if (hbm_mode < HBM_MODE_DEFAULT)
 		hbm_mode = HBM_MODE_DEFAULT;
 
+	/* Dispatch explicitly. The original `else` sent every non-TI board to the
+	 * KTD path, including boards with neither IC probed, where ktd_hbm_set()
+	 * dereferences a NULL bkl_chip.
+	 */
 	if (bkl_id == 1) {
 		ti_hbm_set((enum backlight_hbm_mode)hbm_mode);
 		printk("[%s]: Ti, set hbm_mode = %d\n", __func__, hbm_mode);
-	} else {
+	} else if (bkl_id == 24) {
 		ktd_hbm_set((enum backlight_hbm_mode)hbm_mode);
 		printk("[%s]: ktd, set hbm_mode = %d\n", __func__, hbm_mode);
+	} else {
+		printk("[%s]: unknown backlight IC (bklic=%d), ignoring\n",
+		       __func__, bkl_id);
+		return -ENODEV;
 	}
 	return len;
 }

@@ -208,8 +208,15 @@ static int dump_i2c_reg(struct ti_lmu_bl_chip *chip)
 
 int ti_hbm_set(enum backlight_hbm_mode hbm_mode)
 {
-	struct regmap *regmap = bl_chip->lmu->regmap;
+	struct regmap *regmap;
 	int value = 0;
+
+	/* Mirror of the ktd_hbm_set() guard: this is user-reachable via sysfs
+	 * even on boards where the TI LMU never probed.
+	 */
+	if (!bl_chip || !bl_chip->lmu)
+		return -ENODEV;
+	regmap = bl_chip->lmu->regmap;
 
 	pr_err("[bkl] %s enter\n", __func__);
 	regmap_read(regmap, 0x18, &value);
