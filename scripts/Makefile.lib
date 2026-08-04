@@ -454,3 +454,7 @@ define filechk_offsets
 	 echo ""; \
 	 echo "#endif" )
 endef
+
+# CAMELLIA-LOS: appended last so it overrides per-directory -Werror settings.
+c_flags += -Wno-error -Wno-int-conversion -Wno-strict-prototypes \
+           -Wno-unused-but-set-variable -Wno-implicit-function-declaration

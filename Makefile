@@ -939,7 +939,8 @@ KBUILD_CFLAGS	+= $(call cc-option,-fno-merge-all-constants)
 
 # for gcc -fno-merge-all-constants disables everything, but it is fine
 # to have actual conforming behavior enabled.
-KBUILD_CFLAGS	+= $(call cc-option,-fmerge-constants)
+# CAMELLIA-LOS: unsupported by clang r383902
+# KBUILD_CFLAGS	+= $(call cc-option,-fmerge-constants)
 
 # Make sure -fstack-check isn't enabled (like gentoo apparently did)
 KBUILD_CFLAGS  += $(call cc-option,-fno-stack-check,)
@@ -1929,3 +1930,8 @@ FORCE:
 # Declare the contents of the .PHONY variable as phony.  We keep that
 # information in a variable so we can use it in if_changed and friends.
 .PHONY: $(PHONY)
+
+# CAMELLIA-LOS: warning suppressions for building this 4.14 tree with clang r383902.
+KBUILD_CFLAGS += -Wno-error -Wno-unknown-warning-option -Wno-ignored-optimization-argument
+KBUILD_CFLAGS += -Wno-unused-but-set-variable -Wno-unused-but-set-parameter
+KBUILD_CFLAGS += -Wno-unused-function -Wno-unused-variable -Wno-sizeof-pointer-div -Wno-pointer-sign
