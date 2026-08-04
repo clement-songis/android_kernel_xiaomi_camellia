@@ -41,10 +41,10 @@ CUSTOM_KERNEL_FLAGS := $(addprefix -D, $(shell echo \
 subdir-ccflags-y += $(CUSTOM_KERNEL_FLAGS)
 
 obj-y += $(subst ",,$(CONFIG_MTK_PLATFORM_SENSOR))/
-ifeq ($(TARGET_PRODUCT),$(filter $(TARGET_PRODUCT),camellia))
-KBUILD_CFLAGS += -DTARGET_PRODUCT_CAMELLIA
-endif
-ifeq ($(TARGET_PRODUCT),$(filter $(TARGET_PRODUCT),camellian))
-KBUILD_CFLAGS += -DTARGET_PRODUCT_CAMELLIAN
-endif
+# TARGET_PRODUCT is an Android build variable and is NOT exported into the kernel
+# build environment, so both conditionals below were always false and the sensor
+# list compiled empty -- the camera service enumerated 0 devices. This tree only
+# ever builds camellia/camellian, so define it unconditionally. subdir-ccflags-y
+# (not KBUILD_CFLAGS) so the flag reaches common/v1_1/imgsensor_sensor_list.c.
+subdir-ccflags-y += -DTARGET_PRODUCT_CAMELLIA
 
