@@ -8,12 +8,14 @@
  */
 
 #include <linux/syscalls.h>
+#include <linux/close_range.h>
 #include <linux/export.h>
 #include <linux/fs.h>
 #include <linux/mm.h>
 #include <linux/mmzone.h>
 #include <linux/time.h>
 #include <linux/sched/signal.h>
+#include <linux/sched/task.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include <linux/file.h>
@@ -641,6 +643,129 @@ int __close_fd(struct files_struct *files, unsigned fd)
 out_unlock:
 	spin_unlock(&files->file_lock);
 	return -EBADF;
+}
+
+static struct file *pick_file(struct files_struct *files, unsigned fd)
+{
+	struct file *file = NULL;
+	struct fdtable *fdt;
+
+	spin_lock(&files->file_lock);
+	fdt = files_fdtable(files);
+	if (fd >= fdt->max_fds)
+		goto out_unlock;
+	file = fdt->fd[fd];
+	if (!file)
+		goto out_unlock;
+	rcu_assign_pointer(fdt->fd[fd], NULL);
+	__put_unused_fd(files, fd);
+
+out_unlock:
+	spin_unlock(&files->file_lock);
+	return file;
+}
+
+/*
+ * Mark the whole range close-on-exec rather than closing it now. Descriptors
+ * in the range that are not open are harmless: do_close_on_exec() skips NULL
+ * entries, and __alloc_fd() always sets or clears the bit when the descriptor
+ * is next handed out.
+ */
+static inline void __range_cloexec(struct files_struct *cur_fds,
+				   unsigned int fd, unsigned int max_fd)
+{
+	struct fdtable *fdt;
+
+	/* make sure we're using the correct maximum value */
+	spin_lock(&cur_fds->file_lock);
+	fdt = files_fdtable(cur_fds);
+	max_fd = min(max_fd, fdt->max_fds - 1);
+	if (fd <= max_fd)
+		bitmap_set(fdt->close_on_exec, fd, max_fd - fd + 1);
+	spin_unlock(&cur_fds->file_lock);
+}
+
+static inline void __range_close(struct files_struct *cur_fds, unsigned int fd,
+				 unsigned int max_fd)
+{
+	while (fd <= max_fd) {
+		struct file *file;
+
+		file = pick_file(cur_fds, fd++);
+		if (!file)
+			continue;
+
+		filp_close(file, cur_fds);
+		cond_resched();
+	}
+}
+
+/**
+ * __close_range() - Close all file descriptors in a given range.
+ *
+ * @fd:     starting file descriptor to close
+ * @max_fd: last file descriptor to close
+ * @flags:  CLOSE_RANGE_UNSHARE and/or CLOSE_RANGE_CLOEXEC
+ *
+ * This closes a range of file descriptors. All file descriptors
+ * from @fd up to and including @max_fd are closed.
+ */
+int __close_range(unsigned fd, unsigned max_fd, unsigned int flags)
+{
+	struct task_struct *me = current;
+	struct files_struct *cur_fds = me->files, *fds = NULL;
+
+	if (flags & ~(CLOSE_RANGE_UNSHARE | CLOSE_RANGE_CLOEXEC))
+		return -EINVAL;
+
+	if (fd > max_fd)
+		return -EINVAL;
+
+	if (flags & CLOSE_RANGE_UNSHARE) {
+		int ret;
+
+		/*
+		 * 4.14's unshare_fd() takes no max_fds argument, so unlike
+		 * upstream we always copy the whole descriptor table and then
+		 * operate on the copy. The observable result is identical; we
+		 * only lose upstream's optimisation of not copying the
+		 * descriptors that are about to be closed anyway.
+		 */
+		ret = unshare_fd(CLONE_FILES, &fds);
+		if (ret)
+			return ret;
+
+		/*
+		 * unshare_fd() leaves @fds NULL when the table was not
+		 * actually shared, in which case there is nothing to swap in.
+		 */
+		if (fds)
+			swap(cur_fds, fds);
+	}
+
+	if (flags & CLOSE_RANGE_CLOEXEC)
+		__range_cloexec(cur_fds, fd, max_fd);
+	else
+		__range_close(cur_fds, fd, max_fd);
+
+	if (fds) {
+		/*
+		 * We're done closing the files we were supposed to. Time to
+		 * install the new file descriptor table and drop the old one.
+		 */
+		task_lock(me);
+		me->files = cur_fds;
+		task_unlock(me);
+		put_files_struct(fds);
+	}
+
+	return 0;
+}
+
+SYSCALL_DEFINE3(close_range, unsigned int, fd, unsigned int, max_fd,
+		unsigned int, flags)
+{
+	return __close_range(fd, max_fd, flags);
 }
 
 void do_close_on_exec(struct files_struct *files)
