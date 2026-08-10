@@ -40,6 +40,13 @@
 #define ARM64_WORKAROUND_858921			19
 #define ARM64_WORKAROUND_CAVIUM_30115		20
 #define ARM64_HAS_DCPOP				21
+/*
+ * Slot 22 is free in this tree (mainline used it for ARM64_SVE, which the
+ * vendor removed).  Reusing it keeps ARM64_NCAPS at 30, and with it both
+ * the genksyms CRC of the exported cpu_hwcap_keys[] array and the value of
+ * ARM64_CB_PATCH, which the prebuilt vendor modules depend on.
+ */
+#define ARM64_WORKAROUND_1742098		22
 #define ARM64_UNMAP_KERNEL_AT_EL0		23
 #define ARM64_HARDEN_BRANCH_PREDICTOR		24
 #define ARM64_SSBD				25
