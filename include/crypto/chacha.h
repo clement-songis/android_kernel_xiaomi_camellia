@@ -28,6 +28,27 @@
 /* 192-bit nonce, then 64-bit stream position */
 #define XCHACHA_IV_SIZE		32
 
+/*
+ * The ChaCha state constants ("expand 32-byte k").  random.c builds its state
+ * by hand rather than through crypto_chacha_init(), so it needs these
+ * directly.  Identical to the upstream chacha20.h definitions that this
+ * tree's generalised chacha.h replaced.
+ */
+enum chacha_constants {
+	CHACHA_CONSTANT_EXPA = 0x61707865U,
+	CHACHA_CONSTANT_ND_3 = 0x3320646eU,
+	CHACHA_CONSTANT_2_BY = 0x79622d32U,
+	CHACHA_CONSTANT_TE_K = 0x6b206574U
+};
+
+static inline void chacha_init_consts(u32 *state)
+{
+	state[0]  = CHACHA_CONSTANT_EXPA;
+	state[1]  = CHACHA_CONSTANT_ND_3;
+	state[2]  = CHACHA_CONSTANT_2_BY;
+	state[3]  = CHACHA_CONSTANT_TE_K;
+}
+
 struct chacha_ctx {
 	u32 key[8];
 	int nrounds;

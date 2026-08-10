@@ -34,6 +34,8 @@
 #include <linux/of.h>
 #include <net/addrconf.h>
 #include <linux/siphash.h>
+#include <linux/random.h>
+#include <linux/notifier.h>
 #include <linux/compiler.h>
 #ifdef CONFIG_BLOCK
 #include <linux/blkdev.h>
@@ -1686,7 +1688,15 @@ char *pointer_string(char *buf, char *end, const void *ptr,
 static bool have_filled_random_ptr_key __read_mostly;
 static siphash_key_t ptr_key __read_mostly;
 
-static void fill_random_ptr_key(struct random_ready_callback *unused)
+/*
+ * Runs from the random_ready chain, which is a raw notifier invoked under a
+ * spinlock with interrupts off.  That is safe here: get_random_bytes() is
+ * callable from any context, and publishing the key is a plain WRITE_ONCE.
+ * Mainline defers the equivalent work to a workqueue only because it toggles
+ * a static branch, which needs preemptible context; this backport does not.
+ */
+static int fill_random_ptr_key(struct notifier_block *nb,
+			       unsigned long action, void *data)
 {
 	get_random_bytes(&ptr_key, sizeof(ptr_key));
 	/*
@@ -1696,20 +1706,26 @@ static void fill_random_ptr_key(struct random_ready_callback *unused)
 	 */
 	smp_mb();
 	WRITE_ONCE(have_filled_random_ptr_key, true);
+
+	return NOTIFY_DONE;
 }
 
-static struct random_ready_callback random_ready = {
-	.func = fill_random_ptr_key
+static struct notifier_block random_ready = {
+	.notifier_call = fill_random_ptr_key
 };
 
 static int __init initialize_ptr_random(void)
 {
-	int ret = add_random_ready_callback(&random_ready);
+	int ret = register_random_ready_notifier(&random_ready);
 
 	if (!ret) {
 		return 0;
 	} else if (ret == -EALREADY) {
-		fill_random_ptr_key(&random_ready);
+		/*
+		 * The RNG was already seeded, so nothing was registered and
+		 * there is nothing to unregister - just fill the key now.
+		 */
+		fill_random_ptr_key(&random_ready, 0, NULL);
 		return 0;
 	}
 
