@@ -1,6 +1,7 @@
 config MTK_GPU_SUPPORT
 	bool "Support MTK GPU"
 	default n
+	select TRACE_GPU_MEM
 	help
 	  config supports MTK GPU driver.
 	  CONFIG_MTK_GPU_SUPPORT defines

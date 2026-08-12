@@ -512,3 +512,4 @@ CONFIG_MIHW=y
 # CAMELLIA-LOS: /data is formatted with f2fs casefold
 # (external_storage.casefold.enabled=1); the kernel refuses that mount without it.
 CONFIG_UNICODE=y
+CONFIG_SONY_FF=y
