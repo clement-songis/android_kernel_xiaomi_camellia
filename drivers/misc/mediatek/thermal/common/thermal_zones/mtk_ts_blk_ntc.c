@@ -63,7 +63,7 @@ static int trip_temp[10] = { 150000, 110000, 100000, 90000, 80000,
 				70000, 65000, 60000, 55000, 50000 };
 
 static struct thermal_zone_device *thz_dev;
-//static int mtkts_blkntc_debug_log = 1;
+static int mtkts_blkntc_debug_log;
 static int kernelmode;
 static int g_THERMAL_TRIP[10] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
@@ -95,8 +95,8 @@ static int polling_factor2 = 10000;
 
 #define mtkts_blkntc_dprintk(fmt, args...)   \
 do {                                    \
-	if (1) {                \
-		pr_err("[Thermal/TZ/BLKNTC]" fmt, ##args); \
+	if (mtkts_blkntc_debug_log) {                \
+		pr_debug("[Thermal/TZ/BLKNTC]" fmt, ##args); \
 	}                                   \
 } while (0)
 
@@ -611,7 +611,7 @@ static __s16 mtk_ts_bts_volt_to_temp(__u32 dwVolt)
 	/* -----------------------SW workaround-------------------------------*/
 	/* dwVCriAP = (TAP_OVER_CRITICAL_LOW * RAP_PULL_UP_VOLT) /
 		(TAP_OVER_CRITICAL_LOW + RAP_PULL_UP_R); */
-	pr_notice("[mtk_ts_bts_volt_to_temp]dwVolt1 =%d\n", dwVolt);
+	pr_debug("[mtk_ts_bts_volt_to_temp]dwVolt1 =%d\n", dwVolt);
 
 	dwVCriAP = (g_TAP_over_critical_low * g_RAP_pull_up_voltage)
 				/ (g_TAP_over_critical_low + g_RAP_pull_up_R);
