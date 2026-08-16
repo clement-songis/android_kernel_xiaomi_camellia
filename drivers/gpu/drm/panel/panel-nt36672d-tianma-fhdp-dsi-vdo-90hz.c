@@ -756,7 +756,7 @@ static int nova_tianma_setbacklight_cmdq(void *dsi, dcs_write_gce cb, void *hand
 
 	if (level > 255)
 		level = 255;
-	pr_info("%s backlight = -%d\n", __func__, level);
+	pr_debug("%s backlight = -%d\n", __func__, level);
 	bl_tb0[1] = (u8)level;
 #if 0
 	char bl_tb0[] = {0x51, 0xf, 0xff};

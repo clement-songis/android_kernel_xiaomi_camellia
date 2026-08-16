@@ -204,11 +204,11 @@ static int led_level_disp_set(struct mtk_led_data *s_led,
 	if (bkl_id == 24) {
 		ktd3137_brightness_set(brightness);
 		s_led->conf.level = brightness;
-		printk("[%s]: backlight is ktd3136 contrl! brightness=%d\n", __func__, brightness);
+		pr_debug("[%s]: backlight is ktd3136 contrl! brightness=%d\n", __func__, brightness);
 	} else if (bkl_id == 1) {
 		lm3697_set_brightness(brightness);
 		s_led->conf.level = brightness;
-		printk("[%s]: backlight is lm3697 contrl! brightness=%d\n", __func__, brightness);
+		pr_debug("[%s]: backlight is lm3697 contrl! brightness=%d\n", __func__, brightness);
 	}
 #endif
 /* end modify */
@@ -236,7 +236,7 @@ int setMaxBrightness(char *name, int percent, bool enable)
 
 	max_l = led_dat->conf.cdev.max_brightness;
 	limit_l = (percent * max_l) / 100;
-	pr_info("before: name: %s, percent : %d, limit_l : %d, enable: %d",
+	pr_debug("before: name: %s, percent : %d, limit_l : %d, enable: %d",
 		leds_info->leds[index]->name, percent, limit_l, enable);
 	if (enable) {
 		led_dat->conf.max_level = limit_l;
@@ -251,7 +251,7 @@ int setMaxBrightness(char *name, int percent, bool enable)
 	if (led_dat->conf.cdev.brightness != 0)
 		led_level_disp_set(led_dat, cur_l);
 
-	pr_info("after: name: %s, cur_l : %d, max_level : %d",
+	pr_debug("after: name: %s, cur_l : %d, max_level : %d",
 		led_dat->conf.cdev.name, cur_l, led_dat->conf.max_level);
 	return 0;
 
@@ -275,7 +275,7 @@ int mt_leds_brightness_set(char *name, int level)
 		(((1 << led_dat->conf.led_bits) - 1) * level
 		+ (((1 << led_dat->conf.trans_bits) - 1) / 2))
 		/ ((1 << led_dat->conf.trans_bits) - 1));
-	printk("mtk_debug %s led_level = %d\n", __func__, led_Level);
+	pr_debug("mtk_debug %s led_level = %d\n", __func__, led_Level);
 
 	led_level_disp_set(led_dat, led_Level);
 	led_dat->last_level = led_Level;
@@ -303,7 +303,7 @@ static int led_level_set(struct led_classdev *led_cdev,
 		/ ((1 << led_dat->conf.led_bits) - 1));
 
 	led_debug_log(led_dat, brightness, trans_level);
-	printk("mtk_debug %s trans_level = %d\n", __func__, trans_level);
+	pr_debug("mtk_debug %s trans_level = %d\n", __func__, trans_level);
 
 #ifdef MET_USER_EVENT_SUPPORT
 	if (enable_met_backlight_tag())
