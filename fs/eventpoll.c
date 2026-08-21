@@ -42,6 +42,7 @@
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include <linux/compat.h>
+#include <linux/time_types.h>
 #include <linux/rculist.h>
 #include <net/busy_poll.h>
 
@@ -2159,8 +2160,8 @@ error_return:
  * Implement the event wait interface for the eventpoll file. It is the kernel
  * part of the user space epoll_wait(2).
  */
-SYSCALL_DEFINE4(epoll_wait, int, epfd, struct epoll_event __user *, events,
-		int, maxevents, int, timeout)
+static int do_epoll_wait(int epfd, struct epoll_event __user *events,
+			 int maxevents, long timeout)
 {
 	int error;
 	struct fd f;
@@ -2201,16 +2202,91 @@ error_fput:
 	return error;
 }
 
+SYSCALL_DEFINE4(epoll_wait, int, epfd, struct epoll_event __user *, events,
+		int, maxevents, int, timeout)
+{
+	return do_epoll_wait(epfd, events, maxevents, timeout);
+}
+
+/*
+ * epoll_pwait2(2) is y2038 clean: its timeout is a struct __kernel_timespec on
+ * every ABI, including the 32-bit ones. 4.14 has neither that type nor a
+ * get_timespec64() that understands it - the one here reads a struct timespec,
+ * which happens to have the same layout on arm64 but not on the 32-bit side -
+ * so read the fixed 64-bit form. For a compat caller the upper half of tv_nsec
+ * is padding and is dropped, exactly as upstream's get_timespec64() does.
+ */
+static int ep_get_timespec64(struct timespec64 *ts,
+			     const struct __kernel_timespec __user *uts)
+{
+	struct __kernel_timespec kts;
+
+	if (copy_from_user(&kts, uts, sizeof(kts)))
+		return -EFAULT;
+
+	ts->tv_sec = kts.tv_sec;
+	ts->tv_nsec = kts.tv_nsec;
+	if (in_compat_syscall())
+		ts->tv_nsec &= 0xFFFFFFFFUL;
+
+	return 0;
+}
+
+/*
+ * ep_poll() still takes a relative timeout in milliseconds here. Upstream got
+ * nanosecond timeouts by converting the whole internal epoll API to timespec64
+ * (commit 7cdf7c20e694); doing that on 4.14 would rewrite the hot path that
+ * every epoll_wait(2) caller on the system goes through, so fold the timespec
+ * down to milliseconds instead and leave ep_poll() alone.
+ *
+ * A NULL timeout is "block indefinitely" (-1) and an all-zero timeout is "do
+ * not block" (0), which is how epoll_wait(2) already spells those. Anything
+ * else is rounded *up* to the next whole millisecond, so a sub-millisecond
+ * timeout still waits instead of silently turning into a non-blocking poll.
+ * What is lost against upstream is sub-millisecond resolution, which is the
+ * resolution epoll_wait(2) has never had either.
+ */
+static int ep_timeout_to_msecs(const struct timespec64 *ts, long *msecs)
+{
+	if (!ts) {
+		*msecs = -1;
+		return 0;
+	}
+
+	if (!timespec64_valid(ts))
+		return -EINVAL;
+
+	if (!ts->tv_sec && !ts->tv_nsec) {
+		*msecs = 0;
+		return 0;
+	}
+
+	/*
+	 * tv_sec is a full s64 and the caller may pass anything, so saturate
+	 * rather than overflow. LONG_MAX milliseconds is some 292 million
+	 * years; ep_set_mstimeout() and ktime_set() clamp again from there.
+	 */
+	if (ts->tv_sec >= (s64)(LONG_MAX / MSEC_PER_SEC)) {
+		*msecs = LONG_MAX;
+		return 0;
+	}
+
+	*msecs = (long)ts->tv_sec * MSEC_PER_SEC +
+		 DIV_ROUND_UP(ts->tv_nsec, NSEC_PER_MSEC);
+
+	return 0;
+}
+
 /*
  * Implement the event wait interface for the eventpoll file. It is the kernel
  * part of the user space epoll_pwait(2).
  */
-SYSCALL_DEFINE6(epoll_pwait, int, epfd, struct epoll_event __user *, events,
-		int, maxevents, int, timeout, const sigset_t __user *, sigmask,
-		size_t, sigsetsize)
+static int do_epoll_pwait(int epfd, struct epoll_event __user *events,
+			  int maxevents, long timeout,
+			  const sigset_t __user *sigmask, size_t sigsetsize)
 {
-	int error;
 	sigset_t ksigmask, sigsaved;
+	int error;
 
 	/*
 	 * If the caller wants a certain signal mask to be set during the wait,
@@ -2225,7 +2301,7 @@ SYSCALL_DEFINE6(epoll_pwait, int, epfd, struct epoll_event __user *, events,
 		set_current_blocked(&ksigmask);
 	}
 
-	error = sys_epoll_wait(epfd, events, maxevents, timeout);
+	error = do_epoll_wait(epfd, events, maxevents, timeout);
 
 	/*
 	 * If we changed the signal mask, we need to restore the original one.
@@ -2245,16 +2321,51 @@ SYSCALL_DEFINE6(epoll_pwait, int, epfd, struct epoll_event __user *, events,
 	return error;
 }
 
-#ifdef CONFIG_COMPAT
-COMPAT_SYSCALL_DEFINE6(epoll_pwait, int, epfd,
-			struct epoll_event __user *, events,
-			int, maxevents, int, timeout,
-			const compat_sigset_t __user *, sigmask,
-			compat_size_t, sigsetsize)
+SYSCALL_DEFINE6(epoll_pwait, int, epfd, struct epoll_event __user *, events,
+		int, maxevents, int, timeout, const sigset_t __user *, sigmask,
+		size_t, sigsetsize)
 {
-	long err;
+	return do_epoll_pwait(epfd, events, maxevents, timeout, sigmask,
+			      sigsetsize);
+}
+
+/*
+ * Implement the event wait interface for the eventpoll file. It is the kernel
+ * part of the user space epoll_pwait2(2).
+ */
+SYSCALL_DEFINE6(epoll_pwait2, int, epfd, struct epoll_event __user *, events,
+		int, maxevents,
+		const struct __kernel_timespec __user *, timeout,
+		const sigset_t __user *, sigmask, size_t, sigsetsize)
+{
+	struct timespec64 ts, *to = NULL;
+	long msecs;
+	int error;
+
+	if (timeout) {
+		error = ep_get_timespec64(&ts, timeout);
+		if (error)
+			return error;
+		to = &ts;
+	}
+
+	error = ep_timeout_to_msecs(to, &msecs);
+	if (error)
+		return error;
+
+	return do_epoll_pwait(epfd, events, maxevents, msecs, sigmask,
+			      sigsetsize);
+}
+
+#ifdef CONFIG_COMPAT
+static int do_compat_epoll_pwait(int epfd, struct epoll_event __user *events,
+				 int maxevents, long timeout,
+				 const compat_sigset_t __user *sigmask,
+				 compat_size_t sigsetsize)
+{
 	compat_sigset_t csigmask;
 	sigset_t ksigmask, sigsaved;
+	int err;
 
 	/*
 	 * If the caller wants a certain signal mask to be set during the wait,
@@ -2270,7 +2381,7 @@ COMPAT_SYSCALL_DEFINE6(epoll_pwait, int, epfd,
 		set_current_blocked(&ksigmask);
 	}
 
-	err = sys_epoll_wait(epfd, events, maxevents, timeout);
+	err = do_epoll_wait(epfd, events, maxevents, timeout);
 
 	/*
 	 * If we changed the signal mask, we need to restore the original one.
@@ -2288,6 +2399,42 @@ COMPAT_SYSCALL_DEFINE6(epoll_pwait, int, epfd,
 	}
 
 	return err;
+}
+
+COMPAT_SYSCALL_DEFINE6(epoll_pwait, int, epfd,
+			struct epoll_event __user *, events,
+			int, maxevents, int, timeout,
+			const compat_sigset_t __user *, sigmask,
+			compat_size_t, sigsetsize)
+{
+	return do_compat_epoll_pwait(epfd, events, maxevents, timeout, sigmask,
+				     sigsetsize);
+}
+
+COMPAT_SYSCALL_DEFINE6(epoll_pwait2, int, epfd,
+			struct epoll_event __user *, events,
+			int, maxevents,
+			const struct __kernel_timespec __user *, timeout,
+			const compat_sigset_t __user *, sigmask,
+			compat_size_t, sigsetsize)
+{
+	struct timespec64 ts, *to = NULL;
+	long msecs;
+	int err;
+
+	if (timeout) {
+		err = ep_get_timespec64(&ts, timeout);
+		if (err)
+			return err;
+		to = &ts;
+	}
+
+	err = ep_timeout_to_msecs(to, &msecs);
+	if (err)
+		return err;
+
+	return do_compat_epoll_pwait(epfd, events, maxevents, msecs, sigmask,
+				     sigsetsize);
 }
 #endif
 

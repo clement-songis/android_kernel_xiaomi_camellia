@@ -478,9 +478,16 @@ asmlinkage long compat_sys_lookup_dcookie(u32, u32, char __user *, compat_size_t
  * epoll (fs/eventpoll.c) compat bits follow ...
  */
 struct epoll_event;	/* fortunately, this one is fixed-layout */
+struct __kernel_timespec;
 asmlinkage long compat_sys_epoll_pwait(int epfd,
 			struct epoll_event __user *events,
 			int maxevents, int timeout,
+			const compat_sigset_t __user *sigmask,
+			compat_size_t sigsetsize);
+asmlinkage long compat_sys_epoll_pwait2(int epfd,
+			struct epoll_event __user *events,
+			int maxevents,
+			const struct __kernel_timespec __user *timeout,
 			const compat_sigset_t __user *sigmask,
 			compat_size_t sigsetsize);
 
