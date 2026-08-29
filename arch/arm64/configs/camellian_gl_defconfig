@@ -513,3 +513,7 @@ CONFIG_MIHW=y
 # (external_storage.casefold.enabled=1); the kernel refuses that mount without it.
 CONFIG_UNICODE=y
 CONFIG_SONY_FF=y
+
+# APatch/KernelPatch : sans KALLSYMS_ALL, APatch documente son support
+# comme "Initial support" -- resolution de symboles degradee.
+CONFIG_KALLSYMS_ALL=y
