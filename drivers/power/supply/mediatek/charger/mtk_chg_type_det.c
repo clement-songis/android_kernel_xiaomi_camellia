@@ -372,6 +372,16 @@ static int mt_ac_get_property(struct power_supply *psy,
 			(mtk_chg->chg_type == CHARGING_HOST))
 			val->intval = 0;
 		break;
+	case POWER_SUPPLY_PROP_CURRENT_MAX:
+		/* negotiated input ceiling, already uA */
+		val->intval = charger_get_input_current_limit();
+		break;
+	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
+		/* charger_get_vbus() is mV, this property is uV */
+		val->intval = charger_get_vbus() * 1000;
+		if (val->intval <= 0)
+			val->intval = 5000000;
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -524,6 +534,15 @@ static enum power_supply_property mt_charger_properties[] = {
 
 static enum power_supply_property mt_ac_properties[] = {
 	POWER_SUPPLY_PROP_ONLINE,
+	/*
+	 * healthd walks every online charger and reads current_max and
+	 * voltage_max off it to work out charging power; without them the
+	 * framework computes 0 W and never reports fast charging. The usb
+	 * supply carries them already, but a wall charger comes up as ac,
+	 * and ac only had ONLINE.
+	 */
+	POWER_SUPPLY_PROP_CURRENT_MAX,
+	POWER_SUPPLY_PROP_VOLTAGE_MAX,
 };
 
 static enum power_supply_property mt_usb_properties[] = {

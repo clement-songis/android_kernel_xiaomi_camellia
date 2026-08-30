@@ -1078,6 +1078,19 @@ int charger_get_ibus_ma(void)
 }
 /* BSP.Charge - 2020.11.09 - Add ibus(ma) interface - end*/
 
+/*
+ * Input current limit currently in force, in uA. This is the negotiated
+ * ceiling the charger is allowed to draw, not the instantaneous draw that
+ * charger_get_ibus_ma() reports.
+ */
+int charger_get_input_current_limit(void)
+{
+	if (pinfo == NULL)
+		return 0;
+
+	return pinfo->chg1_data.input_current_limit;
+}
+
 int charger_get_vbus(void)
 {
 	int ret = 0;
