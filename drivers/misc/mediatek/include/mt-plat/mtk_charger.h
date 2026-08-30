@@ -123,6 +123,9 @@ extern int charger_manager_get_system_temp_level(void);
 extern void charger_manager_set_system_temp_level(int temp_level);
 extern int charger_manager_get_system_temp_level_max(void);
 /* BSP.Charger - 2020.11.13 - Add input suspend interface - start */
+/* charging control: stop charging without cutting the power path */
+extern int charger_manager_is_charging_enabled(void);
+extern int charger_manager_set_charging_enabled(bool en);
 extern int mtk_chr_is_charger_exist(unsigned char *exist);
 extern bool is_power_path_supported(void);
 /* BSP.Charge - 2020.11.09 - Add ibus(ma) interface */
