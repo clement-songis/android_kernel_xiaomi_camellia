@@ -453,6 +453,9 @@ struct charger_manager {
 	int system_temp_level;
 	/* BSP.Charger - 2020.11.27 - add custormer info - end */
 
+	/* fast charge: userspace veto on high voltage charging */
+	bool user_hv_disabled;
+
 	/* BSP.Charge - 2021.01.11 - add ffc  parameters - start */
 	bool enable_sw_ffc;
 	int ffc_cv_1;
