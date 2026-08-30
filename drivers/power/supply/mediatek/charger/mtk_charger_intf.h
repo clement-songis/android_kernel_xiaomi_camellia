@@ -456,6 +456,9 @@ struct charger_manager {
 	/* charging control: stop charging, keep the power path alive */
 	bool is_charging_disabled;
 
+	/* fast charge: userspace veto on high voltage charging */
+	bool user_hv_disabled;
+
 	/* BSP.Charge - 2021.01.11 - add ffc  parameters - start */
 	bool enable_sw_ffc;
 	int ffc_cv_1;

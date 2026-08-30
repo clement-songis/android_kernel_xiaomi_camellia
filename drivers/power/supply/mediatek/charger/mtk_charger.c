@@ -357,14 +357,19 @@ int charger_manager_enable_high_voltage_charging(
 	}
 
 	mutex_lock(&consumer_mutex);
-	list_for_each(pos, phead) {
-		ptr = container_of(pos, struct charger_consumer, list);
-		if (ptr->hv_charging_disabled == true) {
-			info->enable_hv_charging = false;
-			break;
+	if (info->user_hv_disabled) {
+		/* the sysfs veto outranks every consumer */
+		info->enable_hv_charging = false;
+	} else {
+		list_for_each(pos, phead) {
+			ptr = container_of(pos, struct charger_consumer, list);
+			if (ptr->hv_charging_disabled == true) {
+				info->enable_hv_charging = false;
+				break;
+			}
+			if (list_is_last(pos, phead))
+				info->enable_hv_charging = true;
 		}
-		if (list_is_last(pos, phead))
-			info->enable_hv_charging = true;
 	}
 	mutex_unlock(&consumer_mutex);
 
@@ -1381,6 +1386,78 @@ static ssize_t store_charger_log_level(struct device *dev,
 	}
 	return size;
 }
+/*
+ * fast_charge: userspace veto on high voltage charging (PE/PE2.0/PD/PE4/PE5).
+ *
+ * 1 keeps the fast charging algorithms available, 0 pins the charger to plain
+ * 5V. The flag is re-applied in charger_manager_enable_high_voltage_charging()
+ * so it outranks the in-kernel consumers rather than racing them.
+ */
+static ssize_t show_fast_charge(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct charger_manager *pinfo = dev->driver_data;
+
+	if (pinfo == NULL)
+		return -ENODEV;
+
+	return sprintf(buf, "%d\n", pinfo->user_hv_disabled ? 0 : 1);
+}
+
+static ssize_t store_fast_charge(struct device *dev,
+				 struct device_attribute *attr,
+				 const char *buf, size_t size)
+{
+	struct charger_manager *pinfo = dev->driver_data;
+	unsigned int en = 0;
+	int ret;
+
+	if (pinfo == NULL)
+		return -ENODEV;
+
+	ret = kstrtouint(buf, 10, &en);
+	if (ret)
+		return ret;
+
+	pinfo->user_hv_disabled = !en;
+	chr_err("%s: fast charge %s\n", __func__, en ? "enabled" : "disabled");
+
+	if (pinfo->user_hv_disabled) {
+		pinfo->enable_hv_charging = false;
+
+		/*
+		 * Clearing the flag only keeps the algorithms from being
+		 * entered again; an adapter that has already negotiated a
+		 * raised voltage stays there. Walk it back down the same way
+		 * _disable_all_charging() and the shutdown path do, or the
+		 * charger sits at 9V until the cable is pulled.
+		 */
+		if (mtk_pe50_get_is_connect(pinfo))
+			mtk_pe50_stop_algo(pinfo, true);
+
+		if (mtk_pe20_get_is_enable(pinfo)) {
+			mtk_pe20_set_is_enable(pinfo, false);
+			if (mtk_pe20_get_is_connect(pinfo))
+				mtk_pe20_reset_ta_vchr(pinfo);
+		}
+
+		if (mtk_pe_get_is_enable(pinfo)) {
+			mtk_pe_set_is_enable(pinfo, false);
+			if (mtk_pe_get_is_connect(pinfo))
+				mtk_pe_reset_ta_vchr(pinfo);
+		}
+	} else {
+		pinfo->enable_hv_charging = true;
+		mtk_pe20_set_is_enable(pinfo, true);
+		mtk_pe_set_is_enable(pinfo, true);
+	}
+
+	_wake_up_charger(pinfo);
+
+	return size;
+}
+static DEVICE_ATTR(fast_charge, 0644, show_fast_charge, store_fast_charge);
+
 static DEVICE_ATTR(charger_log_level, 0644, show_charger_log_level,
 		store_charger_log_level);
 
@@ -3382,6 +3459,10 @@ static int mtk_charger_setup_files(struct platform_device *pdev)
 		goto _out;
 	/* Pump express */
 	ret = device_create_file(&(pdev->dev), &dev_attr_Pump_Express);
+	if (ret)
+		goto _out;
+
+	ret = device_create_file(&(pdev->dev), &dev_attr_fast_charge);
 	if (ret)
 		goto _out;
 
