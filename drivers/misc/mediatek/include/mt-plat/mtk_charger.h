@@ -131,5 +131,6 @@ extern bool is_power_path_supported(void);
 /* BSP.Charge - 2020.11.09 - Add ibus(ma) interface */
 extern int charger_get_ibus_ma(void);
 extern int charger_get_vbus(void);
+extern int charger_get_input_current_limit(void);
 extern bool mt_charger_plugin(void);
 #endif /* __MTK_CHARGER_H__ */
