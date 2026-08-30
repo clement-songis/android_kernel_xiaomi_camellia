@@ -769,6 +769,41 @@ int charger_manager_is_input_suspend(void)
 }
 /* BSP.Charger - 2020.11.13 - Add input suspend interface - end */
 
+/*
+ * Charging control interface.
+ *
+ * Unlike input suspend, this only stops the charging itself: the power path
+ * stays enabled, so VBUS keeps feeding the system and the battery is left
+ * alone instead of slowly discharging. That is what lets userspace hold the
+ * battery at a fixed level without cycling it.
+ *
+ * charger_check_status() re-applies the flag on every charging loop
+ * iteration, so it survives the algorithm turning charging back on.
+ */
+int charger_manager_set_charging_enabled(bool en)
+{
+	pr_info("%s en: %d.\n", __func__, en);
+
+	if (pinfo == NULL)
+		return -ENOTSUPP;
+
+	pinfo->is_charging_disabled = !en;
+
+	charger_dev_enable(pinfo->chg1_dev, en);
+	charger_manager_notifier(pinfo, en ? CHARGER_NOTIFY_START_CHARGING :
+					     CHARGER_NOTIFY_STOP_CHARGING);
+	_wake_up_charger(pinfo);
+
+	return 0;
+}
+
+int charger_manager_is_charging_enabled(void)
+{
+	if (pinfo == NULL)
+		return -ENOTSUPP;
+	return !pinfo->is_charging_disabled;
+}
+
 /* BSP.Charger - 2020.11.27 - add for thermal current limit - start */
 int charger_manager_get_system_temp_level_max(void)
 {
@@ -1897,6 +1932,8 @@ static void charger_check_status(struct charger_manager *info)
 
 	if (info->cmd_discharging)
 		charging = false;
+	if (info->is_charging_disabled)
+		charging = false;
 	if (info->safety_timeout)
 		charging = false;
 	if (info->vbusov_stat)
@@ -1907,12 +1944,12 @@ static void charger_check_status(struct charger_manager *info)
 stop_charging:
 	mtk_battery_notify_check(info);
 
-	chr_err("tmp:%d (jeita:%d sm:%d cv:%d en:%d) (sm:%d) en:%d c:%d s:%d ov:%d sc:%d %d %d\n",
+	chr_err("tmp:%d (jeita:%d sm:%d cv:%d en:%d) (sm:%d) en:%d c:%d s:%d ov:%d sc:%d %d %d cc_dis:%d\n",
 		temperature, info->enable_sw_jeita, info->sw_jeita.sm,
 		info->sw_jeita.cv, info->sw_jeita.charging, thermal->sm,
 		charging, info->cmd_discharging, info->safety_timeout,
 		info->vbusov_stat, info->sc.disable_charger,
-		info->can_charging, charging);
+		info->can_charging, charging, info->is_charging_disabled);
 
 	if (charging != info->can_charging)
 		_charger_manager_enable_charging(info->chg1_consumer,

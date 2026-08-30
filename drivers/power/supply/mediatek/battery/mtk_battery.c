@@ -137,6 +137,7 @@ static enum power_supply_property battery_props[] = {
 	POWER_SUPPLY_PROP_INPUT_SUSPEND,
 	POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT,
 	/* BSP.Charge - 2020.11.09 - Add battery node - end */
+	POWER_SUPPLY_PROP_CHARGE_ENABLED,
 };
 
 /* weak function */
@@ -584,6 +585,9 @@ static int battery_get_property(struct power_supply *psy,
 		val->intval = charger_manager_get_system_temp_level();
 		break;
 	/* BSP.Charge - 2020.11.09 - Add battery node - end */
+	case POWER_SUPPLY_PROP_CHARGE_ENABLED:
+		val->intval = charger_manager_is_charging_enabled();
+		break;
 
 	default:
 		ret = -EINVAL;
@@ -607,6 +611,9 @@ static int battery_set_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT:
 		charger_manager_set_system_temp_level(val->intval);
 		break;
+	case POWER_SUPPLY_PROP_CHARGE_ENABLED:
+		charger_manager_set_charging_enabled(!!val->intval);
+		break;
 	default:
 		rc = -EINVAL;
 		break;
@@ -620,6 +627,7 @@ static int battery_prop_is_writeable(struct power_supply *psy,
 	switch (psp) {
 	case POWER_SUPPLY_PROP_INPUT_SUSPEND:
 	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT:
+	case POWER_SUPPLY_PROP_CHARGE_ENABLED:
 		return 1;
 	default:
 		break;
